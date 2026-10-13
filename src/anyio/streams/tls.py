@@ -407,6 +407,8 @@ class TLSConnectable(ByteStreamConnectable):
     """
     Wraps another connectable and does TLS negotiation after a successful connection.
 
+    The connection always uses the client side of the TLS protocol.
+
     :param connectable: the connectable to wrap
     :param hostname: host name of the server (if host name checking is desired)
     :param ssl_context: the SSLContext object to use (if not provided, a secure default
@@ -441,6 +443,7 @@ class TLSConnectable(ByteStreamConnectable):
         try:
             return await TLSStream.wrap(
                 stream,
+                server_side=False,
                 hostname=self.hostname,
                 ssl_context=self.ssl_context,
                 standard_compatible=self.standard_compatible,

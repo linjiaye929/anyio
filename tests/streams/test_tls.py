@@ -633,9 +633,14 @@ class TestTLSListener:
             tg.cancel_scope.cancel()
 
 
-async def test_tls_connectable(
-    client_context: ssl.SSLContext, server_context: ssl.SSLContext
-) -> None:
+@pytest.mark.parametrize("hostname", ["localhost", None])
+async def test_tls_connectable(ca: CA, hostname: str | None) -> None:
+    server_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ca.issue_cert("localhost").configure_cert(server_context)
+    client_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    client_context.check_hostname = hostname is not None
+    ca.configure_trust(client_context)
+
     server_send, server_receive = create_memory_object_stream[bytes](1)
     client_send, client_receive = create_memory_object_stream[bytes](1)
     client_stream = StapledObjectStream(client_send, server_receive)
@@ -654,11 +659,13 @@ async def test_tls_connectable(
         async def connect(self) -> ObjectStream[bytes]:
             return client_stream
 
-    async with create_task_group() as tg:
+    async with client_stream, server_stream, create_task_group() as tg:
         tg.start_soon(server)
         connectable = TLSConnectable(
-            MemoryConnectable(), ssl_context=client_context, hostname="localhost"
+            MemoryConnectable(), ssl_context=client_context, hostname=hostname
         )
         async with await connectable.connect() as client_tls_stream:
+            assert client_tls_stream.extra(TLSAttribute.server_side) is False
+            assert client_context.verify_mode == ssl.CERT_REQUIRED
             await client_tls_stream.send(b"world")
             assert await client_tls_stream.receive() == b"hello, world"
